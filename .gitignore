@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+*.tsbuildinfo
+
+# Scan outputs — generated on each run, saved as CI artifacts
+output/
+
+# Push URL cache (push fetchStrategy)
+push-cache/
+
+# Environment variables — never commit real values
+.env
+.env.local
+.env.*.local
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Config files with real credentials
+# Keep example config tracked, ignore all real configs
+config/*.config.json
+!config/example.config.json
+!config/production.config.json
+
+# Downloaded sitemaps
+# Remove these two lines if you commit sitemaps for your CI strategy
+sitemaps/**
+!sitemaps/.gitkeep
+
+
+# Open .gitignore and add these lines
+echo "" >> .gitignore
+echo "# Cursor IDE" >> .gitignore
+echo ".cursor/" >> .gitignore

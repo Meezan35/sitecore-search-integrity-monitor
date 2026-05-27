@@ -1,0 +1,86 @@
+name: Daily Search Integrity Scan
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download sitemaps
+        env:
+          VERCEL_BYPASS_SECRET: ${{ secrets.VERCEL_BYPASS_SECRET }}
+        run: |
+          mkdir -p sitemaps/site
+          curl -f -s "${{ vars.SITEMAP_INDEX_URL }}" \
+            -H "x-vercel-protection-bypass: $VERCEL_BYPASS_SECRET" \
+            -H "User-Agent: Mozilla/5.0" \
+            -o sitemaps/site/sitemap-index.xml \
+            && echo "✓ sitemap-index.xml downloaded" \
+            || echo "WARNING: sitemap-index.xml failed"
+          curl -f -s "${{ vars.SITEMAP_1_URL }}" \
+            -H "x-vercel-protection-bypass: $VERCEL_BYPASS_SECRET" \
+            -H "User-Agent: Mozilla/5.0" \
+            -o sitemaps/site/sitemap-1.xml \
+            && echo "✓ sitemap-1.xml downloaded" \
+            || echo "WARNING: sitemap-1.xml failed"
+          curl -f -s "${{ vars.SITEMAP_2_URL }}" \
+            -H "x-vercel-protection-bypass: $VERCEL_BYPASS_SECRET" \
+            -H "User-Agent: Mozilla/5.0" \
+            -o sitemaps/site/sitemap-2.xml \
+            && echo "✓ sitemap-2.xml downloaded" \
+            || echo "WARNING: sitemap-2.xml failed"
+          curl -f -s "${{ vars.SITEMAP_3_URL }}" \
+            -H "x-vercel-protection-bypass: $VERCEL_BYPASS_SECRET" \
+            -H "User-Agent: Mozilla/5.0" \
+            -o sitemaps/site/sitemap-3.xml \
+            && echo "✓ sitemap-3.xml downloaded" \
+            || echo "WARNING: sitemap-3.xml failed"
+
+      - name: Run scan
+        env:
+          SITECORE_SEARCH_API_KEY: ${{ secrets.SITECORE_SEARCH_API_KEY }}
+        run: npm run scan -- --config config/production.config.json
+
+      - name: Upload HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scan-report-${{ github.run_id }}
+          path: output/*.html
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: Upload JSON report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scan-data-${{ github.run_id }}
+          path: output/*.json
+          retention-days: 90
+          if-no-files-found: warn
+
+      - name: Microsoft Teams notification
+        if: always()
+        env:
+          TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
+          GITHUB_REPO_PUBLIC_URL: ${{ github.server_url }}/${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          OUTPUT_DIR: output
+        run: |
+          npm run build
+          node dist/alerts/github-teams-notify.js || true

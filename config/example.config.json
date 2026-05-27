@@ -1,0 +1,55 @@
+{
+  "name": "My Sitecore Site",
+  "environment": "production",
+  "sitemap": {
+    "url": "https://www.yoursite.com/sitemap.xml",
+    "fetchStrategy": "file",
+    "localFilePath": "./sitemaps/yoursite/sitemap-index.xml",
+    "stripLocale": false,
+    "locales": ["en"],
+    "delayBetweenRequestsMs": 0,
+    "_comment_fetchStrategy": "Use 'file' if your site uses Vercel or Cloudflare bot protection. Use 'http' if your sitemap is publicly accessible without protection.",
+    "_comment_localFilePath": "Download your sitemaps locally first using: curl https://yoursite.com/sitemap.xml -o sitemaps/yoursite/sitemap-index.xml"
+  },
+  "search": {
+    "apiUrl": "https://discover.sitecorecloud.io/discover/v2/YOUR_ACCOUNT_ID",
+    "apiKey": "${SITECORE_SEARCH_API_KEY}",
+    "pageSize": 500,
+    "_comment_apiUrl": "Replace YOUR_ACCOUNT_ID with the number in your Discover API URL. Find it in DevTools network tab.",
+    "_comment_apiKey": "Store your API key as an environment variable. Never hardcode it here.",
+    "sections": [
+      {
+        "name": "Products",
+        "widgetId": "rfkid_YOUR_PRODUCT_WIDGET_ID",
+        "sources": ["YOUR_SOURCE_ID_1", "YOUR_SOURCE_ID_2"],
+        "urlPatterns": ["/products", "/collections"],
+        "subtypeField": "type",
+        "urlField": "url",
+        "entity": "content",
+        "locale": { "country": "us", "language": "en" },
+        "_comment_widgetId": "Find this in DevTools: trigger a search, look for rfk_id in the POST payload to discover.sitecorecloud.io",
+        "_comment_sources": "Find this in DevTools: look for the sources array in the same POST payload",
+        "_comment_urlPatterns": "URL path prefixes to filter sitemap URLs for this section. Only URLs starting with these paths are compared against this widget."
+      },
+      {
+        "name": "Content",
+        "widgetId": "rfkid_YOUR_CONTENT_WIDGET_ID",
+        "sources": ["YOUR_SOURCE_ID_3"],
+        "urlPatterns": ["/blog", "/guides", "/resources"],
+        "subtypeField": "type",
+        "urlField": "url",
+        "entity": "content",
+        "locale": { "country": "us", "language": "en" }
+      }
+    ]
+  },
+  "thresholds": {
+    "warningPercent": 90,
+    "criticalPercent": 50,
+    "_comment": "Warning fires when coverage drops below warningPercent. Critical fires below criticalPercent."
+  },
+  "output": {
+    "dir": "./output",
+    "retainDays": 30
+  }
+}

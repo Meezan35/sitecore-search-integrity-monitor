@@ -1,0 +1,51 @@
+# Example: push sitemap URLs to the monitor after a successful deployment.
+# Copy to .github/workflows/ in your repo and set repository Variables / Secrets:
+#   vars.SITEMAP_URL          — URL to download the sitemap index (or use build artifacts)
+#   vars.MONITOR_PUSH_URL     — Base URL of the monitor (no trailing slash), e.g. https://monitor.example.com
+#   secrets.PUSH_API_SECRET   — Must match PUSH_API_SECRET on the monitor host
+
+name: Sitecore Sitemap Push
+
+on:
+  deployment_status:
+
+jobs:
+  push-sitemap:
+    if: github.event.deployment_status.state == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Extract sitemap URLs and push to monitor
+        env:
+          SITEMAP_URL: ${{ vars.SITEMAP_URL }}
+          MONITOR_PUSH_URL: ${{ vars.MONITOR_PUSH_URL }}
+          PUSH_API_SECRET: ${{ secrets.PUSH_API_SECRET }}
+        run: |
+          set -euo pipefail
+          curl -sSf "$SITEMAP_URL" -o sitemap-index.xml
+          python3 << 'PY'
+          import json, os, ssl
+          from datetime import datetime, timezone
+          from urllib import request
+          import xml.etree.ElementTree as ET
+
+          tree = ET.parse("sitemap-index.xml")
+          ns = "http://www.sitemaps.org/schemas/sitemap/0.9"
+          urls = []
+          for el in tree.iter():
+              if el.tag == f"{{{ns}}}loc" or el.tag.endswith("loc"):
+                  if el.text:
+                      urls.append(el.text.strip())
+
+          payload = {
+              "secret": os.environ["PUSH_API_SECRET"],
+              "source": "your-site-production",
+              "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+              "urls": urls,
+          }
+          data = json.dumps(payload).encode("utf-8")
+          url = os.environ["MONITOR_PUSH_URL"].rstrip("/") + "/api/push"
+          req = request.Request(url, data=data, headers={"Content-Type": "application/json"})
+          ctx = ssl.create_default_context()
+          with request.urlopen(req, context=ctx) as resp:
+              print(resp.read().decode())
+          PY

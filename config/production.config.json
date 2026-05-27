@@ -1,0 +1,72 @@
+{
+  "name": "Sheppard Mullin",
+  "environment": "production",
+  "sitemap": {
+  "url": "https://www.sheppard.com/sitemap.xml",
+  "fetchStrategy": "http",
+  "childSitemapUrls": [
+    "https://www.sheppard.com/sitemap-1.xml",
+    "https://www.sheppard.com/sitemap-2.xml",
+    "https://www.sheppard.com/sitemap-3.xml"
+  ],
+  "stripLocale": false,
+  "locales": ["en"],
+  "delayBetweenRequestsMs": 1500
+},
+  "search": {
+    "apiUrl": "https://discover.sitecorecloud.io/discover/v2/10824492826",
+    "apiKey": "${SITECORE_SEARCH_API_KEY}",
+    "pageSize": 100,
+    "sections": [
+      {
+        "name": "Insights",
+        "widgetId": "rfkid_insight_news_and_events_search",
+        "sources": ["1172754", "1172762"],
+        "urlPatterns": [
+          "/insights/blogs",
+          "/insights/articles",
+          "/insights/books",
+          "/insights/podcasts",
+          "/insights/videos",
+          "/insights/webinars"
+        ],
+        "subtypeField": "type",
+        "urlField": "url",
+        "entity": "content",
+        "locale": { "country": "us", "language": "en" }
+      },
+      {
+        "name": "News & Events",
+        "widgetId": "rfkid_insight_news_and_events_search",
+        "sources": ["1203623", "1175157"],
+        "urlPatterns": [
+          "/news-and-events/events",
+          "/news-and-events/press-releases",
+          "/news-and-events/media-mentions"
+        ],
+        "subtypeField": "type",
+        "urlField": "url",
+        "entity": "content",
+        "locale": { "country": "us", "language": "en" }
+      },
+      {
+        "name": "People",
+        "widgetId": "rfkid_people_search_name_results",
+        "sources": ["1172530", "1203909"],
+        "urlPatterns": ["/people"],
+        "subtypeField": "type",
+        "urlField": "url",
+        "entity": "content",
+        "locale": { "country": "us", "language": "en" }
+      }
+    ]
+  },
+  "thresholds": {
+    "warningPercent": 90,
+    "criticalPercent": 50
+  },
+  "output": {
+    "dir": "./output",
+    "retainDays": 30
+  }
+}
