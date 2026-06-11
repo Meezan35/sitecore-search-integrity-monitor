@@ -1,5 +1,8 @@
+import { countByMissingType, type ClassifiedUrl } from "../core/classify-missing";
 import type { ComparisonResult } from "../types/validation.types";
 import type { ScanReport } from "../types/scan-report.types";
+
+const CLASSIFIED_GROUP_LIMIT = 50;
 
 function escapeHtml(s: string): string {
   return s
@@ -24,7 +27,8 @@ function renderSection(sectionName: string, comparison: ComparisonResult): strin
 
   const subtypeTableHtml = showSubtypeTable ? renderSubtypeTable(comparison) : "";
 
-  const missingGroupedHtml = renderMissingBySubtype(sectionName, comparison);
+  const missingGroupedHtml = renderClassifiedMissing(sectionName, comparison);
+  const attentionStatsHtml = renderAttentionStats(comparison);
 
   return `
     <article class="section-card">
@@ -42,10 +46,68 @@ function renderSection(sectionName: string, comparison: ComparisonResult): strin
         <span><strong>Expected:</strong> ${formatInt(comparison.expectedCount)}</span>
         <span><strong>Indexed:</strong> ${formatInt(comparison.indexedCount)}</span>
       </div>
+      ${attentionStatsHtml}
       ${subtypeTableHtml}
       ${missingGroupedHtml}
     </article>
   `;
+}
+
+function renderAttentionStats(comparison: ComparisonResult): string {
+  const classified = comparison.classifiedMissing ?? [];
+  const unexpected = comparison.unexpectedUrls.length;
+
+  if (classified.length === 0 && unexpected === 0) {
+    return "";
+  }
+
+  if (classified.length === 0) {
+    const missing = comparison.missingUrls.length;
+    return `
+      <div class="attention-stats">
+        <div class="attention-stats__row${missing > 0 ? " attention-stats__row--danger" : ""}">
+          <span>Missing:</span>
+          <span>${formatInt(missing)}</span>
+        </div>
+        <div class="attention-stats__row">
+          <span>Stale index entries:</span>
+          <span>${formatInt(unexpected)}</span>
+        </div>
+      </div>`;
+  }
+
+  const counts = countByMissingType(classified);
+  const total = classified.length;
+  const notIndexedClass = counts["not-indexed"] > 0 ? " attention-stats__row--danger" : "";
+
+  return `
+    <div class="attention-stats">
+      <div class="attention-stats__row${notIndexedClass}">
+        <span>🔴 Not indexed:</span>
+        <span>${formatInt(counts["not-indexed"])}</span>
+      </div>
+      <div class="attention-stats__row">
+        <span>🟡 URL mismatches:</span>
+        <span>${formatInt(counts.mismatch)}</span>
+      </div>
+      <div class="attention-stats__row">
+        <span>🟠 Bucket URLs:</span>
+        <span>${formatInt(counts["bucket-url"])}</span>
+      </div>
+      <div class="attention-stats__row">
+        <span>⚪ Suspect data:</span>
+        <span>${formatInt(counts["suspect-test"])}</span>
+      </div>
+      <div class="attention-stats__divider" aria-hidden="true"></div>
+      <div class="attention-stats__row attention-stats__row--total">
+        <span>Total:</span>
+        <span>${formatInt(total)} needing attention</span>
+      </div>
+      <div class="attention-stats__row">
+        <span>Stale index entries:</span>
+        <span>${formatInt(unexpected)}</span>
+      </div>
+    </div>`;
 }
 
 function shouldShowSubtypeBreakdown(sectionName: string, comparison: ComparisonResult): boolean {
@@ -129,7 +191,43 @@ function miniBarToneClass(coveragePercent: number): string {
   return "mini-bar-fill--bad";
 }
 
-function renderMissingBySubtype(sectionName: string, comparison: ComparisonResult): string {
+function renderClassifiedMissing(sectionName: string, comparison: ComparisonResult): string {
+  const classified = comparison.classifiedMissing ?? [];
+  if (classified.length === 0) {
+    return renderLegacyMissingBySubtype(sectionName, comparison);
+  }
+
+  const counts = countByMissingType(classified);
+  const total = classified.length;
+
+  const badges = [
+    counts["not-indexed"] > 0 ? `<span class="missing-badge missing-badge--red">🔴 ${formatInt(counts["not-indexed"])} not indexed</span>` : "",
+    counts.mismatch > 0 ? `<span class="missing-badge missing-badge--amber">🟡 ${formatInt(counts.mismatch)} URL mismatches</span>` : "",
+    counts["bucket-url"] > 0 ? `<span class="missing-badge missing-badge--orange">🟠 ${formatInt(counts["bucket-url"])} bucket URLs</span>` : "",
+    counts["suspect-test"] > 0 ? `<span class="missing-badge missing-badge--gray">⚪ ${formatInt(counts["suspect-test"])} suspect test data</span>` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  const groups = [
+    renderMismatchGroup(classified.filter((c) => c.type === "mismatch")),
+    renderBucketGroup(classified.filter((c) => c.type === "bucket-url")),
+    renderNotIndexedGroup(classified.filter((c) => c.type === "not-indexed")),
+    renderSuspectGroup(classified.filter((c) => c.type === "suspect-test")),
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  return `
+    <section class="missing-section">
+      <h3 class="missing__heading">${escapeHtml(sectionName)} — ${formatInt(total)} URLs need attention</h3>
+      <p class="missing-badges">${badges}</p>
+      <div class="classified-groups">${groups}</div>
+    </section>
+  `;
+}
+
+function renderLegacyMissingBySubtype(sectionName: string, comparison: ComparisonResult): string {
   const totalMissing = comparison.missingUrls.length;
   if (totalMissing === 0) {
     return "";
@@ -164,6 +262,125 @@ function renderMissingBySubtype(sectionName: string, comparison: ComparisonResul
       <div class="missing-groups">${blocks}</div>
     </section>
   `;
+}
+
+function renderMoreNote(remaining: number): string {
+  if (remaining <= 0) {
+    return "";
+  }
+  return `<p class="classified-more">… and ${formatInt(remaining)} more (see full report)</p>`;
+}
+
+function renderMismatchGroup(entries: ClassifiedUrl[]): string {
+  if (entries.length === 0) {
+    return "";
+  }
+
+  const visible = entries.slice(0, CLASSIFIED_GROUP_LIMIT);
+  const rows = visible
+    .map(
+      (entry) => `
+      <li class="classified-row">
+        <div class="classified-pair">
+          <div><span class="classified-label">Sitemap URL (correct):</span> <code>${escapeHtml(entry.url)}</code></div>
+          <div><span class="classified-label">Indexed as (wrong):</span> <code class="classified-wrong">${escapeHtml(entry.relatedUrl ?? "")}</code></div>
+        </div>
+      </li>`,
+    )
+    .join("");
+
+  return `
+    <details class="classified-group classified-group--mismatch">
+      <summary class="classified-group__summary">
+        <span class="classified-group__title">🟡 URL Mismatch — indexed under wrong URL (${formatInt(entries.length)})</span>
+        <span class="classified-group__subtitle">These pages are searchable but clicking a result may go to the wrong URL. Fix the slug in the search index and re-index.</span>
+      </summary>
+      <ul class="classified-list">${rows}</ul>
+      ${renderMoreNote(entries.length - visible.length)}
+    </details>`;
+}
+
+function renderBucketGroup(entries: ClassifiedUrl[]): string {
+  if (entries.length === 0) {
+    return "";
+  }
+
+  const visible = entries.slice(0, CLASSIFIED_GROUP_LIMIT);
+  const rows = visible
+    .map(
+      (entry) => `
+      <li class="classified-row">
+        <div class="classified-pair">
+          <div><span class="classified-label">Sitemap:</span> <code>${escapeHtml(entry.url)}</code></div>
+          <div><span class="classified-label">Indexed:</span> <code>${escapeHtml(entry.relatedUrl ?? "")}</code></div>
+        </div>
+      </li>`,
+    )
+    .join("");
+
+  return `
+    <details class="classified-group classified-group--bucket">
+      <summary class="classified-group__summary">
+        <span class="classified-group__title">🟠 URL Format Mismatch — folder vs flat path (${formatInt(entries.length)})</span>
+        <span class="classified-group__subtitle">Same content, different URL structure between sitemap and search index.</span>
+      </summary>
+      <ul class="classified-list">${rows}</ul>
+      ${renderMoreNote(entries.length - visible.length)}
+    </details>`;
+}
+
+function renderNotIndexedGroup(entries: ClassifiedUrl[]): string {
+  if (entries.length === 0) {
+    return "";
+  }
+
+  const visible = entries.slice(0, CLASSIFIED_GROUP_LIMIT);
+  const rows = visible
+    .map(
+      (entry) => `
+      <li class="classified-row">
+        <a class="classified-link" href="${escapeHtml(entry.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(entry.url)}</a>
+      </li>`,
+    )
+    .join("");
+
+  return `
+    <details class="classified-group classified-group--not-indexed">
+      <summary class="classified-group__summary">
+        <span class="classified-group__title">🔴 Not Indexed — missing from search entirely (${formatInt(entries.length)})</span>
+        <span class="classified-group__subtitle">These pages exist on the site but have no entry in the search index. They will not appear in search results.</span>
+      </summary>
+      <p class="classified-action">Trigger a re-index or remove from sitemap if the page no longer exists.</p>
+      <ul class="classified-list classified-list--links">${rows}</ul>
+      ${renderMoreNote(entries.length - visible.length)}
+    </details>`;
+}
+
+function renderSuspectGroup(entries: ClassifiedUrl[]): string {
+  if (entries.length === 0) {
+    return "";
+  }
+
+  const visible = entries.slice(0, CLASSIFIED_GROUP_LIMIT);
+  const rows = visible
+    .map(
+      (entry) => `
+      <li class="classified-row">
+        <a class="classified-link" href="${escapeHtml(entry.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(entry.url)}</a>
+      </li>`,
+    )
+    .join("");
+
+  return `
+    <details class="classified-group classified-group--suspect">
+      <summary class="classified-group__summary">
+        <span class="classified-group__title">⚪ Suspect Test Data — review these entries (${formatInt(entries.length)})</span>
+        <span class="classified-group__subtitle">Slugs suggest test, duplicate, or non-production content in your production sitemap.</span>
+      </summary>
+      <p class="classified-action">Remove from sitemap if not real production pages.</p>
+      <ul class="classified-list classified-list--links">${rows}</ul>
+      ${renderMoreNote(entries.length - visible.length)}
+    </details>`;
 }
 
 export function generateScanReportHtml(report: ScanReport): string {
@@ -285,6 +502,102 @@ export function generateScanReportHtml(report: ScanReport): string {
     .missing-list code { word-break: break-all; font-family: ui-monospace, monospace; color: var(--muted); font-size: .78rem; }
 
     .missing-flat .missing-list { max-height: min(420px, 50vh); }
+
+    .attention-stats {
+      margin: .75rem 0 1rem;
+      padding: .75rem .9rem;
+      border: 1px solid var(--border);
+      border-radius: .45rem;
+      background: rgba(0,0,0,.12);
+      font-size: .875rem;
+    }
+    .attention-stats__row {
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: .15rem 0;
+      color: var(--muted);
+    }
+    .attention-stats__row span:last-child { color: var(--text); font-variant-numeric: tabular-nums; }
+    .attention-stats__row--danger span:last-child { color: var(--red); font-weight: 600; }
+    .attention-stats__row--total { font-weight: 600; color: var(--text); }
+    .attention-stats__divider {
+      margin: .45rem 0;
+      border-top: 1px solid var(--border);
+    }
+
+    .missing-badges {
+      margin: 0 0 .85rem;
+      font-size: .82rem;
+      line-height: 1.6;
+      color: var(--muted);
+    }
+    .missing-badge { margin-right: .65rem; white-space: nowrap; }
+
+    .classified-groups { display: grid; gap: .65rem; }
+    .classified-group {
+      border: 1px solid var(--border);
+      border-radius: .45rem;
+      overflow: clip;
+      background: rgba(0,0,0,.12);
+    }
+    .classified-group__summary {
+      cursor: pointer;
+      padding: .65rem .8rem;
+      list-style-position: outside;
+      outline: none;
+    }
+    .classified-group__summary::-webkit-details-marker { color: var(--muted); }
+    .classified-group[open] .classified-group__summary { border-bottom: 1px solid var(--border); }
+    .classified-group__title { display: block; font-weight: 600; font-size: .9rem; margin-bottom: .2rem; }
+    .classified-group__subtitle { display: block; font-size: .78rem; color: var(--muted); line-height: 1.45; }
+    .classified-group--mismatch .classified-group__title { color: #D97706; }
+    .classified-group--bucket .classified-group__title { color: #EA580C; }
+    .classified-group--not-indexed .classified-group__title { color: #DC2626; }
+    .classified-group--suspect .classified-group__title { color: #6B7280; }
+
+    .classified-action {
+      margin: 0;
+      padding: .55rem .8rem 0;
+      font-size: .78rem;
+      color: var(--muted);
+      font-style: italic;
+    }
+    .classified-list {
+      margin: 0;
+      padding: .45rem .8rem .75rem 1.35rem;
+      max-height: min(360px, 42vh);
+      overflow-y: auto;
+    }
+    .classified-list--links { list-style: none; padding-left: .8rem; }
+    .classified-row { margin: .35rem 0; font-size: .8rem; }
+    .classified-pair { display: grid; gap: .2rem; }
+    .classified-label { color: var(--muted); font-size: .74rem; margin-right: .35rem; }
+    .classified-pair code, .classified-list code {
+      word-break: break-all;
+      font-family: ui-monospace, monospace;
+      color: var(--text);
+      font-size: .78rem;
+    }
+    .classified-wrong {
+      color: #DC2626 !important;
+      text-decoration: line-through;
+    }
+    .classified-link {
+      color: var(--accent);
+      text-decoration: none;
+      word-break: break-all;
+      font-family: ui-monospace, monospace;
+      font-size: .78rem;
+    }
+    .classified-link:hover { text-decoration: underline; }
+    .classified-more {
+      margin: 0;
+      padding: 0 .8rem .7rem;
+      font-size: .76rem;
+      color: var(--muted);
+      font-style: italic;
+    }
   </style>
 </head>
 <body>

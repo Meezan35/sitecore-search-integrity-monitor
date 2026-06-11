@@ -1,3 +1,5 @@
+import type { ClassifiedUrl } from "../core/classify-missing";
+
 export interface SubtypeCoverage {
   subtype: string;
   expectedCount: number;
@@ -15,6 +17,7 @@ export interface ComparisonResult {
   unexpectedUrls: string[];
   coveragePercent: number;
   bySubtype: Record<string, SubtypeCoverage>;
+  classifiedMissing: ClassifiedUrl[];
 }
 
 export interface ThresholdConfig {

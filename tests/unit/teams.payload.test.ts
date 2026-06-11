@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { classifyMissingUrls } from "../../src/core/classify-missing";
 import { buildTeamsPayload, type ScanRecord } from "../../src/alerts/teams.payload";
 import type { ScanSectionReport } from "../../src/types/scan-report.types";
 
@@ -13,6 +14,7 @@ const baseSection = (name: string, coverage: number, findings: ScanSectionReport
     unexpectedUrls: [],
     coveragePercent: coverage,
     bySubtype: {},
+    classifiedMissing: [],
   },
   findings,
 });
@@ -88,7 +90,7 @@ describe("buildTeamsPayload", () => {
     expect(sections.some((s) => s.title === "🔴 Critical Issues")).toBe(false);
   });
 
-  it("formats per-section facts with coverage and counts", () => {
+  it("formats per-section facts with coverage and counts when unclassified", () => {
     const scan = baseScan([
       {
         section: "Insights",
@@ -100,6 +102,7 @@ describe("buildTeamsPayload", () => {
           unexpectedUrls: ["/b"],
           coveragePercent: 90,
           bySubtype: {},
+          classifiedMissing: [],
         },
         findings: [],
       },
@@ -111,5 +114,34 @@ describe("buildTeamsPayload", () => {
     expect(facts[0]?.value).toContain("90.00%");
     expect(facts[0]?.value).toContain("1 missing");
     expect(facts[0]?.value).toContain("1 unexpected");
+  });
+
+  it("formats per-section facts with classified counts when available", () => {
+    const missingUrls = ["/people/luis-abreu", "/people/caceres-christie", "/people/daniel-flores"];
+    const unexpectedUrls = ["/people/luiss-abreuu", "/people/c/a/caceres-christie"];
+    const scan = baseScan([
+      {
+        section: "People",
+        comparison: {
+          expectedCount: 100,
+          indexedCount: 97,
+          matchedCount: 97,
+          missingUrls,
+          unexpectedUrls,
+          coveragePercent: 96.58,
+          bySubtype: {},
+          classifiedMissing: classifyMissingUrls(missingUrls, unexpectedUrls),
+        },
+        findings: [],
+      },
+    ]);
+    const p = buildTeamsPayload(scan, repo, runId) as Record<string, unknown>;
+    const sections = p.sections as { facts?: { name: string; value: string }[] }[];
+    const facts = sections[0]?.facts ?? [];
+    expect(facts[0]?.value).toContain("96.58%");
+    expect(facts[0]?.value).toContain("1 not indexed");
+    expect(facts[0]?.value).toContain("1 URL mismatches");
+    expect(facts[0]?.value).toContain("1 bucket URL");
+    expect(facts[0]?.value).not.toContain("missing");
   });
 });

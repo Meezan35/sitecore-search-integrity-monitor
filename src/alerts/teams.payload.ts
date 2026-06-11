@@ -1,3 +1,4 @@
+import { countByMissingType } from "../core/classify-missing";
 import type { ScanReport } from "../types/scan-report.types";
 
 /** Scan JSON shape written by the monitor (alias for clarity in alerting). */
@@ -9,16 +10,40 @@ function sectionEmoji(coveragePercent: number): string {
   return "❌";
 }
 
+function formatSectionFactValue(sec: ScanRecord["sections"][number]): string {
+  const cov = sec.comparison.coveragePercent;
+  const classified = sec.comparison.classifiedMissing ?? [];
+  const missing = sec.comparison.missingUrls.length;
+  const unexpected = sec.comparison.unexpectedUrls.length;
+
+  if (classified.length === 0) {
+    return `${cov.toFixed(2)}% · ${missing} missing · ${unexpected} unexpected`;
+  }
+
+  const counts = countByMissingType(classified);
+  const parts = [`${cov.toFixed(2)}%`];
+
+  if (counts["not-indexed"] > 0) {
+    parts.push(`${counts["not-indexed"]} not indexed`);
+  }
+  if (counts.mismatch > 0) {
+    parts.push(`${counts.mismatch} URL mismatches`);
+  }
+  if (counts["bucket-url"] > 0) {
+    parts.push(`${counts["bucket-url"]} bucket URL${counts["bucket-url"] === 1 ? "" : "s"}`);
+  }
+  if (counts["suspect-test"] > 0) {
+    parts.push(`${counts["suspect-test"]} suspect test`);
+  }
+
+  return parts.join(" · ");
+}
+
 function formatFacts(scan: ScanRecord): { name: string; value: string }[] {
-  return scan.sections.map((sec) => {
-    const cov = sec.comparison.coveragePercent;
-    const missing = sec.comparison.missingUrls.length;
-    const unexpected = sec.comparison.unexpectedUrls.length;
-    return {
-      name: `${sectionEmoji(cov)} ${sec.section}`,
-      value: `${cov.toFixed(2)}% · ${missing} missing · ${unexpected} unexpected`,
-    };
-  });
+  return scan.sections.map((sec) => ({
+    name: `${sectionEmoji(sec.comparison.coveragePercent)} ${sec.section}`,
+    value: formatSectionFactValue(sec),
+  }));
 }
 
 function collectMessages(

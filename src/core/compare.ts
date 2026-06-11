@@ -62,6 +62,7 @@ export function compareUrls(
     unexpectedUrls,
     coveragePercent,
     bySubtype,
+    classifiedMissing: [],
   };
 }
 

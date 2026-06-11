@@ -1,3 +1,4 @@
+import { classifyMissingUrls } from "./classify-missing";
 import { compareUrls } from "./compare";
 import { matchesPattern } from "./normalize";
 import type { UrlSource } from "../types/connector.types";
@@ -32,6 +33,8 @@ export async function scanSection(input: SectionScanInput): Promise<ComparisonRe
     indexedUrls.map((url) => ({ url, type: "" })),
     input.section,
   );
+
+  result.classifiedMissing = classifyMissingUrls(result.missingUrls, result.unexpectedUrls);
 
   logger.info(
     {

@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 
+import { classifyMissingUrls } from "../../src/core/classify-missing";
 import { generateScanReportHtml } from "../../src/report/generate-scan-html";
 import type { ScanReport } from "../../src/types/scan-report.types";
 import type { ComparisonResult } from "../../src/types/validation.types";
 
 function baseComparison(overrides: Partial<ComparisonResult> = {}): ComparisonResult {
+  const missingUrls = overrides.missingUrls ?? [];
+  const unexpectedUrls = overrides.unexpectedUrls ?? [];
   return {
     expectedCount: 100,
     indexedCount: 90,
@@ -13,6 +16,9 @@ function baseComparison(overrides: Partial<ComparisonResult> = {}): ComparisonRe
     unexpectedUrls: [],
     coveragePercent: 90,
     bySubtype: {},
+    classifiedMissing:
+      overrides.classifiedMissing ??
+      (missingUrls.length > 0 ? classifyMissingUrls(missingUrls, unexpectedUrls) : []),
     ...overrides,
   };
 }
@@ -139,13 +145,40 @@ describe("generateScanReportHtml", () => {
     };
 
     const html = generateScanReportHtml(report);
-    expect(html).toContain("missing URLs");
-    expect(html).toContain("Articles (2 missing)");
-    expect(html).toContain("Blogs (1 missing)");
-    expect(html.indexOf("Articles (2 missing)")).toBeLessThan(
-      html.indexOf("Blogs (1 missing)")
-    );
+    expect(html).toContain("URLs need attention");
+    expect(html).toContain("Not Indexed");
     expect(html).toContain("&lt;");
+  });
+
+  it("renders classified mismatch and bucket groups", () => {
+    const missingUrls = ["/people/luis-abreu", "/people/caceres-christie"];
+    const unexpectedUrls = ["/people/luiss-abreuu", "/people/c/a/caceres-christie"];
+    const report: ScanReport = {
+      targetName: "T",
+      environment: "qa",
+      configPath: "/x.json",
+      startedAt: "",
+      completedAt: "",
+      durationMs: 1,
+      findingCounts: { info: 0, warning: 0, critical: 0 },
+      sections: [
+        {
+          section: "People",
+          findings: [],
+          comparison: baseComparison({
+            missingUrls,
+            unexpectedUrls,
+            classifiedMissing: classifyMissingUrls(missingUrls, unexpectedUrls),
+          }),
+        },
+      ],
+    };
+
+    const html = generateScanReportHtml(report);
+    expect(html).toContain("URL Mismatch");
+    expect(html).toContain("URL Format Mismatch");
+    expect(html).toContain("classified-wrong");
+    expect(html).toContain("Stale index entries");
   });
 
   it("shows green tick for 100% subtype coverage", () => {
